@@ -1,4 +1,5 @@
 #include <iostream> 
+#include <iomanip>
 typedef unsigned char BYTE;     // 1 byte
 typedef unsigned short WORD;    // 2 bytes
 
@@ -82,12 +83,13 @@ int64_t RCon[11] = { 0x00000000, 0x01000000, 0x02000000, 0x04000000, 0x08000000,
 const int Nr = 10;  // AES-128 
 const int Nk = 4;   // 
 
+
 int bytesToInteger(BYTE* buffer)     // buffer 4 bytes
 {
-    int a = int((unsigned char)(buffer[0]) << 24 |
-        (unsigned char)(buffer[1]) << 16 |
-        (unsigned char)(buffer[2]) << 8 |
-        (unsigned char)(buffer[3]));
+    int a = int((BYTE)(buffer[0]) << 24 |
+        (BYTE)(buffer[1]) << 16 |
+        (BYTE)(buffer[2]) << 8 |
+        (BYTE)(buffer[3]));
     return a;
 }
 
@@ -122,8 +124,10 @@ BYTE* intToByte(int n) {
 //}
 
 
-void KeyExpansion(BYTE* key) {
-    BYTE K[4][4];
+// Input: 16-byte 1D array
+// Output: 176-byte 1D array of Key (11 * 16) (K0, K1, ..., K10)
+BYTE* KeyExpansion(BYTE* key) {     
+    BYTE K[4][4], result[176];
 
     int count = 0;
     for (int i = 0; i < 4; i++) {
@@ -133,39 +137,75 @@ void KeyExpansion(BYTE* key) {
         }
     }
 
+    // store K[0] (input key) into result
+    for (int i = 0; i < 16; i++) {
+        result[i] = key[i];
+    }
+
+    count = 16;
     for (int i = 1; i <= 10; i++) {
-        // Rotate left 8 bits / 1 byte
-        BYTE temp = K[3][0];
-        K[3][0] = K[3][1];
-        K[3][1] = K[3][2];
-        K[3][2] = K[3][3];
-        K[3][3] = temp;
+        // Rotate left 8 bits K[3] and store in temp
+        BYTE temp[4];
+        temp[0] = K[3][1];
+        temp[1] = K[3][2];
+        temp[2] = K[3][3];
+        temp[3] = K[3][0];
 
         // sbox(Ki – 1[3] <<< 8) (*)
         BYTE sbox[4];
-        sbox[0] = Sbox[K[3][0]];
-        sbox[1] = Sbox[K[3][1]];
-        sbox[2] = Sbox[K[3][2]];
-        sbox[3] = Sbox[K[3][3]];
+        sbox[0] = Sbox[temp[0]];
+        sbox[1] = Sbox[temp[1]];
+        sbox[2] = Sbox[temp[2]];
+        sbox[3] = Sbox[temp[3]];
 
         // Ki[0] <- Ki–1[0] ^ (*) ^ Ci
-        std::cout << bytesToInteger(K[0]) << std::endl;
-        std::cout << bytesToInteger(sbox) << std::endl;
-        std::cout << RCon[i] << std::endl;
-        std::cout << (bytesToInteger(K[0]) ^ bytesToInteger(sbox)) << std::endl;
-        std::cout << ((bytesToInteger(K[0]) ^ bytesToInteger(sbox)) ^ RCon[i]) << std::endl;
-        std::cout << (bytesToInteger(K[0]) ^ bytesToInteger(sbox) ^ RCon[i]);
+        BYTE* tempo = intToByte((bytesToInteger(K[0]) ^ bytesToInteger(sbox) ^ RCon[i])); 
+        K[0][0] = tempo[0];
+        K[0][1] = tempo[1];
+        K[0][2] = tempo[2];
+        K[0][3] = tempo[3];
 
         // Ki[1] <- Ki-1[1] ^ Ki[0];
-        
+        tempo = intToByte((bytesToInteger(K[1]) ^ bytesToInteger(K[0])));
+        K[1][0] = tempo[0];
+        K[1][1] = tempo[1];
+        K[1][2] = tempo[2];
+        K[1][3] = tempo[3];
 
         // Ki[2] <- Ki-1[2] ^ Ki[1];
-
+        tempo = intToByte((bytesToInteger(K[2]) ^ bytesToInteger(K[1])));
+        K[2][0] = tempo[0];
+        K[2][1] = tempo[1];
+        K[2][2] = tempo[2];
+        K[2][3] = tempo[3];
 
         // Ki[3] <- Ki-1[3] ^ Ki[2];
+        tempo = intToByte((bytesToInteger(K[3]) ^ bytesToInteger(K[2])));
+        K[3][0] = tempo[0];
+        K[3][1] = tempo[1];
+        K[3][2] = tempo[2];
+        K[3][3] = tempo[3];
+
+        // store K[1], K[2], ..., K[10] into result
+        for (int j = 0; j < 4; j++) {
+            for (int k = 0; k < 4; k++) {
+                result[count] = K[j][k];
+                count++;
+            }
+        }
+    }
+    return result;
+}
 
 
-        std::cout << K;
+// Input: 176-byte 1D array of Key (11 * 16) (K0, K1, ..., K10)
+void printByteToHex(BYTE* arr) {
+    for (int i = 0; i < 11; i++) {
+        std::cout << "K" << i << ": ";
+        for (int j = i * 16; j < 16 * (i + 1); j++) {
+            std::cout << std::hex << (int)arr[j] << std::dec << " ";
+        }
+        std::cout << std::endl;
     }
 }
 
@@ -176,6 +216,6 @@ int main() {
                     0x20, 0x4b, 0x75, 0x6e,
                     0x67, 0x20, 0x46, 0x75 };   // Thats my Kung Fu
 
-    KeyExpansion(key);
+    printByteToHex(KeyExpansion(key));
     return 0;
 }
